@@ -122,7 +122,7 @@ const ReactElement = function(type, key, ref, self, source, owner, props) {
     // Record the component responsible for creating this element.
     _owner: owner,
   };
-
+  // 定义只有开发环境会用到的测试相关属性
   if (__DEV__) {
     // The validation flag is currently mutative. We put it on
     // an external backing store so that we can freeze the whole object.
@@ -179,22 +179,12 @@ export function jsx(type, config, maybeKey) {
   let key = null;
   let ref = null;
 
-  // Currently, key can be spread in as a prop. This causes a potential
-  // issue if key is also explicitly declared (ie. <div {...props} key="Hi" />
-  // or <div key="Hi" {...props} /> ). We want to deprecate key spread,
-  // but as an intermediary step, we will use jsxDEV for everything except
-  // <div {...props} key="Hi" />, because we aren't currently able to tell if
-  // key is explicitly declared to be undefined or not.
-  if (maybeKey !== undefined) {
-    key = '' + maybeKey;
+  if (hasValidRef(config)) {
+    ref = config.ref;
   }
 
   if (hasValidKey(config)) {
     key = '' + config.key;
-  }
-
-  if (hasValidRef(config)) {
-    ref = config.ref;
   }
 
   // Remaining properties are added to a new props object
@@ -205,6 +195,12 @@ export function jsx(type, config, maybeKey) {
     ) {
       props[propName] = config[propName];
     }
+  }
+
+  // intentionally not checking if key was set above
+  // this key is higher priority as it's static
+  if (maybeKey !== undefined) {
+    key = '' + maybeKey;
   }
 
   // Resolve default props
@@ -243,22 +239,12 @@ export function jsxDEV(type, config, maybeKey, source, self) {
   let key = null;
   let ref = null;
 
-  // Currently, key can be spread in as a prop. This causes a potential
-  // issue if key is also explicitly declared (ie. <div {...props} key="Hi" />
-  // or <div key="Hi" {...props} /> ). We want to deprecate key spread,
-  // but as an intermediary step, we will use jsxDEV for everything except
-  // <div {...props} key="Hi" />, because we aren't currently able to tell if
-  // key is explicitly declared to be undefined or not.
-  if (maybeKey !== undefined) {
-    key = '' + maybeKey;
+  if (hasValidRef(config)) {
+    ref = config.ref;
   }
 
   if (hasValidKey(config)) {
     key = '' + config.key;
-  }
-
-  if (hasValidRef(config)) {
-    ref = config.ref;
   }
 
   // Remaining properties are added to a new props object
@@ -269,6 +255,12 @@ export function jsxDEV(type, config, maybeKey, source, self) {
     ) {
       props[propName] = config[propName];
     }
+  }
+
+  // intentionally not checking if key was set above
+  // this key is higher priority as it's static
+  if (maybeKey !== undefined) {
+    key = '' + maybeKey;
   }
 
   // Resolve default props
@@ -325,14 +317,17 @@ export function createElement(type, config, children) {
       ref = config.ref;
     }
     if (hasValidKey(config)) {
+      // let key be a string
       key = '' + config.key;
     }
 
     self = config.__self === undefined ? null : config.__self;
     source = config.__source === undefined ? null : config.__source;
     // Remaining properties are added to a new props object
+    // 构造 props
     for (propName in config) {
       if (
+        // 剔除保留属性 如 ref key 等
         hasOwnProperty.call(config, propName) &&
         !RESERVED_PROPS.hasOwnProperty(propName)
       ) {
@@ -343,6 +338,7 @@ export function createElement(type, config, children) {
 
   // Children can be more than one argument, and those are transferred onto
   // the newly allocated props object.
+  // 处理 children 如果多个 child 那么就保存到数组中
   const childrenLength = arguments.length - 2;
   if (childrenLength === 1) {
     props.children = children;
@@ -351,6 +347,8 @@ export function createElement(type, config, children) {
     for (let i = 0; i < childrenLength; i++) {
       childArray[i] = arguments[i + 2];
     }
+    // __DEV__ 相当于 process.env.NODE_ENV
+    // 在开发环境中 冻结 children 数组
     if (__DEV__) {
       if (Object.freeze) {
         Object.freeze(childArray);
@@ -362,6 +360,7 @@ export function createElement(type, config, children) {
   // Resolve default props
   if (type && type.defaultProps) {
     const defaultProps = type.defaultProps;
+    // 默认属性不会覆盖 props 
     for (propName in defaultProps) {
       if (props[propName] === undefined) {
         props[propName] = defaultProps[propName];
@@ -369,6 +368,7 @@ export function createElement(type, config, children) {
     }
   }
   if (__DEV__) {
+    // 定义开发环境下报警相关
     if (key || ref) {
       const displayName =
         typeof type === 'function'
@@ -382,6 +382,7 @@ export function createElement(type, config, children) {
       }
     }
   }
+  // 工厂函数 ReactElement
   return ReactElement(
     type,
     key,

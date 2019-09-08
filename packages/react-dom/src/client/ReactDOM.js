@@ -42,19 +42,19 @@ import {
 } from 'react-reconciler/inline.dom';
 import {createPortal as createPortalImpl} from 'shared/ReactPortal';
 import {canUseDOM} from 'shared/ExecutionEnvironment';
-import {setBatchingImplementation} from 'legacy-events/ReactGenericBatching';
+import {setBatchingImplementation} from 'events/ReactGenericBatching';
 import {
   setRestoreImplementation,
   enqueueStateRestore,
   restoreStateIfNeeded,
-} from 'legacy-events/ReactControlledComponent';
-import {injection as EventPluginHubInjection} from 'legacy-events/EventPluginHub';
-import {runEventsInBatch} from 'legacy-events/EventBatching';
-import {eventNameDispatchConfigs} from 'legacy-events/EventPluginRegistry';
+} from 'events/ReactControlledComponent';
+import {injection as EventPluginHubInjection} from 'events/EventPluginHub';
+import {runEventsInBatch} from 'events/EventBatching';
+import {eventNameDispatchConfigs} from 'events/EventPluginRegistry';
 import {
   accumulateTwoPhaseDispatches,
   accumulateDirectDispatches,
-} from 'legacy-events/EventPropagators';
+} from 'events/EventPropagators';
 import {LegacyRoot, ConcurrentRoot, BatchedRoot} from 'shared/ReactRootTags';
 import {has as hasInstance} from 'shared/ReactInstanceMap';
 import ReactVersion from 'shared/ReactVersion';
@@ -70,7 +70,6 @@ import {
   getNodeFromInstance,
   getFiberCurrentPropsFromNode,
   getClosestInstanceFromNode,
-  markContainerAsRoot,
 } from './ReactDOMComponentTree';
 import {restoreControlledState} from './ReactDOMComponent';
 import {dispatchEvent} from '../events/ReactDOMEventListener';
@@ -364,33 +363,21 @@ ReactWork.prototype._onCommit = function(): void {
     callback();
   }
 };
-
+// ⚠️ FiberRoot 构造工厂
 function ReactSyncRoot(
   container: DOMContainer,
   tag: RootTag,
-  options: void | RootOptions,
+  hydrate: boolean,
 ) {
   // Tag is either LegacyRoot or Concurrent Root
-  const hydrate = options != null && options.hydrate === true;
-  const hydrationCallbacks =
-    (options != null && options.hydrationOptions) || null;
-  const root = createContainer(container, tag, hydrate, hydrationCallbacks);
+  // 重要 ⚠️ 这里是实际 FiberRoot 的生成函数
+  const root = createContainer(container, tag, hydrate);
   this._internalRoot = root;
-  markContainerAsRoot(root.current, container);
 }
 
-function ReactRoot(container: DOMContainer, options: void | RootOptions) {
-  const hydrate = options != null && options.hydrate === true;
-  const hydrationCallbacks =
-    (options != null && options.hydrationOptions) || null;
-  const root = createContainer(
-    container,
-    ConcurrentRoot,
-    hydrate,
-    hydrationCallbacks,
-  );
+function ReactRoot(container: DOMContainer, hydrate: boolean) {
+  const root = createContainer(container, ConcurrentRoot, hydrate);
   this._internalRoot = root;
-  markContainerAsRoot(root.current, container);
 }
 
 ReactRoot.prototype.render = ReactSyncRoot.prototype.render = function(
@@ -503,7 +490,7 @@ setBatchingImplementation(
 );
 
 let warnedAboutHydrateAPI = false;
-
+// 生成 FiberRoot 的过程
 function legacyCreateRootFromDOMContainer(
   container: DOMContainer,
   forceHydrate: boolean,
@@ -511,6 +498,7 @@ function legacyCreateRootFromDOMContainer(
   const shouldHydrate =
     forceHydrate || shouldHydrateDueToLegacyHeuristic(container);
   // First clear any existing content.
+  // SSR 时要清空整个 root 
   if (!shouldHydrate) {
     let warned = false;
     let rootSibling;
@@ -546,25 +534,23 @@ function legacyCreateRootFromDOMContainer(
   }
 
   // Legacy roots are not batched.
-  return new ReactSyncRoot(
-    container,
-    LegacyRoot,
-    shouldHydrate
-      ? {
-          hydrate: true,
-        }
-      : undefined,
-  );
+  // 同步创建 Root 并不进入批量更新队列
+  return new ReactSyncRoot(container, LegacyRoot, shouldHydrate);
 }
-
+// ⚠️ 渲染组件的虚拟 DOM 子树
 function legacyRenderSubtreeIntoContainer(
+  // 如果虚拟 DOM 没有父组件 那么这里是空
   parentComponent: ?React$Component<any, any>,
+  // 这是我们要渲染的虚拟 DOM
   children: ReactNodeList,
+  // 要挂载的真实 DOM
   container: DOMContainer,
+  // SSR 渲染标示
   forceHydrate: boolean,
   callback: ?Function,
 ) {
   if (__DEV__) {
+    // 喜闻乐见的开发模式报错环节
     topLevelUpdateWarnings(container);
     warnOnInvalidCallback(callback === undefined ? null : callback, 'render');
   }
@@ -574,6 +560,7 @@ function legacyRenderSubtreeIntoContainer(
   let root: _ReactSyncRoot = (container._reactRootContainer: any);
   let fiberRoot;
   if (!root) {
+    // 利用 html 的 DOM 初始化 FiberRoot 并在 container 上做了一个缓存
     // Initial mount
     root = container._reactRootContainer = legacyCreateRootFromDOMContainer(
       container,
@@ -588,10 +575,12 @@ function legacyRenderSubtreeIntoContainer(
       };
     }
     // Initial mount should not be batched.
+    // 初始化的时候的 update 并不进入队列哦 😯
     unbatchedUpdates(() => {
       updateContainer(children, fiberRoot, parentComponent, callback);
     });
   } else {
+    // 非初始化 直接渲染
     fiberRoot = root._internalRoot;
     if (typeof callback === 'function') {
       const originalCallback = callback;
@@ -601,8 +590,10 @@ function legacyRenderSubtreeIntoContainer(
       };
     }
     // Update
+    // 实际上是向队列里面塞了个任务呢
     updateContainer(children, fiberRoot, parentComponent, callback);
   }
+  // ⚠️ 返回渲染后的 fiberRoot 这里可能是你第一次见到 fiber 这是个超级核心的实现哦
   return getPublicRootInstance(fiberRoot);
 }
 
@@ -618,7 +609,7 @@ function createPortal(
   // TODO: pass ReactDOM portal implementation as third argument
   return createPortalImpl(children, container, null, key);
 }
-
+// -------------------- the ReactDom core define -----------------------------
 const ReactDOM: Object = {
   createPortal,
 
@@ -653,7 +644,8 @@ const ReactDOM: Object = {
     }
     return findHostInstance(componentOrElement);
   },
-
+  // 据说 hydrate 未来要代替 render ？ 从这里来看两者的实现是相近的 hydrate 更常见于 SSR 中
+  // hydrate方法，解决的是如何复用server端，ReactDOMServer的结果。客户端 '水合' 服务端渲染结果
   hydrate(element: React$Node, container: DOMContainer, callback: ?Function) {
     invariant(
       isValidContainer(container),
@@ -669,6 +661,7 @@ const ReactDOM: Object = {
       );
     }
     // TODO: throw or warn if we couldn't hydrate?
+    // render 的实际过程发生在这里 这里是在渲染虚拟 dom 到真实 dom
     return legacyRenderSubtreeIntoContainer(
       null,
       element,
@@ -846,10 +839,6 @@ const ReactDOM: Object = {
 
 type RootOptions = {
   hydrate?: boolean,
-  hydrationOptions?: {
-    onHydrated?: (suspenseNode: Comment) => void,
-    onDeleted?: (suspenseNode: Comment) => void,
-  },
 };
 
 function createRoot(
@@ -865,7 +854,8 @@ function createRoot(
     functionName,
   );
   warnIfReactDOMContainerInDEV(container);
-  return new ReactRoot(container, options);
+  const hydrate = options != null && options.hydrate === true;
+  return new ReactRoot(container, hydrate);
 }
 
 function createSyncRoot(
@@ -881,7 +871,8 @@ function createSyncRoot(
     functionName,
   );
   warnIfReactDOMContainerInDEV(container);
-  return new ReactSyncRoot(container, BatchedRoot, options);
+  const hydrate = options != null && options.hydrate === true;
+  return new ReactSyncRoot(container, BatchedRoot, hydrate);
 }
 
 function warnIfReactDOMContainerInDEV(container) {

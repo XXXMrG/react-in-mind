@@ -15,7 +15,6 @@ import type {
   ReactEventResponder,
   ReactEventResponderInstance,
   ReactFundamentalComponent,
-  ReactScope,
 } from 'shared/ReactTypes';
 import type {RootTag} from 'shared/ReactRootTags';
 import type {WorkTag} from 'shared/ReactWorkTags';
@@ -25,15 +24,12 @@ import type {ExpirationTime} from './ReactFiberExpirationTime';
 import type {UpdateQueue} from './ReactUpdateQueue';
 import type {ContextDependency} from './ReactFiberNewContext';
 import type {HookType} from './ReactFiberHooks';
-import type {SuspenseInstance} from './ReactFiberHostConfig';
 
 import invariant from 'shared/invariant';
 import warningWithoutStack from 'shared/warningWithoutStack';
 import {
   enableProfilerTimer,
   enableFundamentalAPI,
-  enableUserTimingAPI,
-  enableScopeAPI,
 } from 'shared/ReactFeatureFlags';
 import {NoEffect, Placement} from 'shared/ReactSideEffectTags';
 import {ConcurrentRoot, BatchedRoot} from 'shared/ReactRootTags';
@@ -52,13 +48,11 @@ import {
   Profiler,
   SuspenseComponent,
   SuspenseListComponent,
-  DehydratedFragment,
   FunctionComponent,
   MemoComponent,
   SimpleMemoComponent,
   LazyComponent,
   FundamentalComponent,
-  ScopeComponent,
 } from 'shared/ReactWorkTags';
 import getComponentName from 'shared/getComponentName';
 
@@ -89,7 +83,6 @@ import {
   REACT_MEMO_TYPE,
   REACT_LAZY_TYPE,
   REACT_FUNDAMENTAL_TYPE,
-  REACT_SCOPE_TYPE,
 } from 'shared/ReactSymbols';
 
 let hasBadMapPolyfill;
@@ -250,8 +243,12 @@ export type Fiber = {|
   _debugHookTypes?: Array<HookType> | null,
 |};
 
-let debugCounter = 1;
+let debugCounter;
 
+if (__DEV__) {
+  debugCounter = 1;
+}
+// 重要 ⚠️ 所有的 Fiber 工厂函数
 function FiberNode(
   tag: WorkTag,
   pendingProps: mixed,
@@ -320,16 +317,11 @@ function FiberNode(
     this.treeBaseDuration = 0;
   }
 
-  // This is normally DEV-only except www when it adds listeners.
-  // TODO: remove the User Timing integration in favor of Root Events.
-  if (enableUserTimingAPI) {
-    this._debugID = debugCounter++;
-    this._debugIsCurrentlyTiming = false;
-  }
-
   if (__DEV__) {
+    this._debugID = debugCounter++;
     this._debugSource = null;
     this._debugOwner = null;
+    this._debugIsCurrentlyTiming = false;
     this._debugNeedsRemount = false;
     this._debugHookTypes = null;
     if (!hasBadMapPolyfill && typeof Object.preventExtensions === 'function') {
@@ -569,7 +561,7 @@ export function resetWorkInProgress(
 
   return workInProgress;
 }
-
+// 初始化一个 FiberRoot 利用工厂函数 使用 tag 来标记 Fiber 类型
 export function createHostRootFiber(tag: RootTag): Fiber {
   let mode;
   if (tag === ConcurrentRoot) {
@@ -589,7 +581,7 @@ export function createHostRootFiber(tag: RootTag): Fiber {
 
   return createFiber(HostRoot, null, null, mode);
 }
-
+// 
 export function createFiberFromTypeAndProps(
   type: any, // React$ElementType
   key: null | string,
@@ -678,16 +670,6 @@ export function createFiberFromTypeAndProps(
                 );
               }
               break;
-            case REACT_SCOPE_TYPE:
-              if (enableScopeAPI) {
-                return createFiberFromScope(
-                  type,
-                  pendingProps,
-                  mode,
-                  expirationTime,
-                  key,
-                );
-              }
           }
         }
         let info = '';
@@ -727,7 +709,7 @@ export function createFiberFromTypeAndProps(
 
   return fiber;
 }
-
+// 无状态函数
 export function createFiberFromElement(
   element: ReactElement,
   mode: TypeOfMode,
@@ -754,7 +736,7 @@ export function createFiberFromElement(
   }
   return fiber;
 }
-
+// React.Fragment
 export function createFiberFromFragment(
   elements: ReactFragment,
   mode: TypeOfMode,
@@ -776,19 +758,6 @@ export function createFiberFromFundamental(
   const fiber = createFiber(FundamentalComponent, pendingProps, key, mode);
   fiber.elementType = fundamentalComponent;
   fiber.type = fundamentalComponent;
-  fiber.expirationTime = expirationTime;
-  return fiber;
-}
-
-function createFiberFromScope(
-  scope: ReactScope,
-  pendingProps: any,
-  mode: TypeOfMode,
-  expirationTime: ExpirationTime,
-  key: null | string,
-) {
-  const fiber = createFiber(ScopeComponent, pendingProps, key, mode);
-  fiber.type = scope;
   fiber.expirationTime = expirationTime;
   return fiber;
 }
@@ -873,15 +842,7 @@ export function createFiberFromHostInstanceForDeletion(): Fiber {
   fiber.type = 'DELETED';
   return fiber;
 }
-
-export function createFiberFromDehydratedFragment(
-  dehydratedNode: SuspenseInstance,
-): Fiber {
-  const fiber = createFiber(DehydratedFragment, null, null, NoMode);
-  fiber.stateNode = dehydratedNode;
-  return fiber;
-}
-
+// 插槽
 export function createFiberFromPortal(
   portal: ReactPortal,
   mode: TypeOfMode,
