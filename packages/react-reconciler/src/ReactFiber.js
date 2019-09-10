@@ -248,7 +248,7 @@ let debugCounter;
 if (__DEV__) {
   debugCounter = 1;
 }
-// 重要 ⚠️ 所有的 Fiber 工厂函数
+// 重要 ⚠️ 所有的 Fiber 工厂函数 根据 WorkTag 来区分具体 element 类型
 function FiberNode(
   tag: WorkTag,
   pendingProps: mixed,
@@ -343,6 +343,7 @@ function FiberNode(
 //    is faster.
 // 5) It should be easy to port this to a C struct and keep a C implementation
 //    compatible.
+// 实际返回的是 FiberNode 对象
 const createFiber = function(
   tag: WorkTag,
   pendingProps: mixed,

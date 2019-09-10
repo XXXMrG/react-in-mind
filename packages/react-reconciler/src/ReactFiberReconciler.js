@@ -125,7 +125,7 @@ function getContextForSubtree(
 
   return parentContext;
 }
-
+// ⚠️ 这里是更新操作的起点哦
 function scheduleRootUpdate(
   current: Fiber,
   element: ReactNodeList,
@@ -198,7 +198,7 @@ export function updateContainerAtExpirationTime(
       }
     }
   }
-
+  // 通过父节点获取子树上下文对象
   const context = getContextForSubtree(parentComponent);
   if (container.context === null) {
     container.context = context;
@@ -310,6 +310,7 @@ export function updateContainer(
   parentComponent: ?React$Component<any, any>,
   callback: ?Function,
 ): ExpirationTime {
+  // Fiber 对象哦
   const current = container.current;
   const currentTime = requestCurrentTime();
   if (__DEV__) {
@@ -319,12 +320,15 @@ export function updateContainer(
       warnIfNotScopedWithMatchingAct(current);
     }
   }
+  // 暂存 config
   const suspenseConfig = requestCurrentSuspenseConfig();
+  // 过期时间
   const expirationTime = computeExpirationForFiber(
     currentTime,
     current,
     suspenseConfig,
   );
+  // 重点来了哦
   return updateContainerAtExpirationTime(
     element,
     container,

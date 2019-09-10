@@ -197,7 +197,7 @@ function cloneUpdateQueue<State>(
   };
   return queue;
 }
-
+// 工厂函数 创建一个包裹着更新任务信息的对象
 export function createUpdate(
   expirationTime: ExpirationTime,
   suspenseConfig: null | SuspenseConfig,

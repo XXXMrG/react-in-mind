@@ -286,17 +286,19 @@ export function requestCurrentTime() {
   currentEventTime = msToExpirationTime(now());
   return currentEventTime;
 }
-
+// 计算更新队列中 Fiber 过期时间 通过这个过期时间来决策更新任务在队列中的位置
 export function computeExpirationForFiber(
   currentTime: ExpirationTime,
   fiber: Fiber,
   suspenseConfig: null | SuspenseConfig,
 ): ExpirationTime {
+  // 获取 Fiber mode 注意下边的两个并操作 会触发不同的返回分支
   const mode = fiber.mode;
+  // 这里直接同步更新 
   if ((mode & BatchedMode) === NoMode) {
     return Sync;
   }
-
+  // 获取优先级
   const priorityLevel = getCurrentPriorityLevel();
   if ((mode & ConcurrentMode) === NoMode) {
     return priorityLevel === ImmediatePriority ? Sync : Batched;
@@ -306,7 +308,7 @@ export function computeExpirationForFiber(
     // Use whatever time we're already rendering
     return renderExpirationTime;
   }
-
+  // 通过优先级或者 suspense Config 计算时间
   let expirationTime;
   if (suspenseConfig !== null) {
     // Compute an expiration time based on the Suspense timeout.
@@ -342,6 +344,7 @@ export function computeExpirationForFiber(
   // TODO: We shouldn't have to do this if the update is on a different root.
   // Refactor computeExpirationForFiber + scheduleUpdate so we have access to
   // the root when we check for this condition.
+  // 如果过期时间和已经在渲染过程中的过期时间撞了 那么通过 -1 来把这个更新单独移到另外一个批处理中
   if (workInProgressRoot !== null && expirationTime === renderExpirationTime) {
     // This is a trick to move this update into a separate batch
     expirationTime -= 1;
@@ -707,14 +710,19 @@ export function discreteUpdates<A, B, C, R>(
     }
   }
 }
-
+// 初始化 root 的时候利用这个来直接触发 update 而并非进入队列成批更新
 export function unbatchedUpdates<A, R>(fn: (a: A) => R, a: A): R {
+  // 全局标示变量 标示 React 执行栈信息 这里操作了一波位运算
   const prevExecutionContext = executionContext;
+  // BatchedContext 是批量更新标示
   executionContext &= ~BatchedContext;
+  // LegacyUnbatchedContext 是非批量更新标示
   executionContext |= LegacyUnbatchedContext;
   try {
+    // 直接运行更新操作
     return fn(a);
   } finally {
+    // 更新后清理现场
     executionContext = prevExecutionContext;
     if (executionContext === NoContext) {
       // Flush the immediate callbacks that were scheduled during this batch
