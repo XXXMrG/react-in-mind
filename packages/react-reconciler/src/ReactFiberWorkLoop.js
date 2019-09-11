@@ -366,7 +366,7 @@ export function computeUniqueAsyncExpiration(): ExpirationTime {
   lastUniqueAsyncExpiration = result;
   return result;
 }
-
+// 重要 ⚠️ 核心调度 api 执行 Fiber 调度
 export function scheduleUpdateOnFiber(
   fiber: Fiber,
   expirationTime: ExpirationTime,
@@ -383,12 +383,14 @@ export function scheduleUpdateOnFiber(
   root.pingTime = NoWork;
 
   checkForInterruption(fiber, expirationTime);
+  // 记录调度器执行状态
   recordScheduleUpdate();
 
   // TODO: computeExpirationForFiber also reads the priority. Pass the
   // priority as an argument to that function and this one.
+  // 获取当前优先级
   const priorityLevel = getCurrentPriorityLevel();
-
+  // 同步更新调度
   if (expirationTime === Sync) {
     if (
       // Check if we're inside unbatchedUpdates
@@ -397,16 +399,19 @@ export function scheduleUpdateOnFiber(
       (executionContext & (RenderContext | CommitContext)) === NoContext
     ) {
       // Register pending interactions on the root to avoid losing traced interaction data.
+      // 在根上注册挂起的交互以避免丢失跟踪的交互数据。
       schedulePendingInteractions(root, expirationTime);
 
       // This is a legacy edge case. The initial mount of a ReactDOM.render-ed
       // root inside of batchedUpdates should be synchronous, but layout updates
       // should be deferred until the end of the batch.
+      // 布局更新应推迟到批处理结束。
       let callback = renderRoot(root, Sync, true);
       while (callback !== null) {
         callback = callback(true);
       }
     } else {
+      // 以最高优先级调度
       scheduleCallbackForRoot(root, ImmediatePriority, Sync);
       if (executionContext === NoContext) {
         // Flush the synchronous work now, unless we're already working or inside
@@ -418,6 +423,7 @@ export function scheduleUpdateOnFiber(
       }
     }
   } else {
+    // 异步调度
     scheduleCallbackForRoot(root, priorityLevel, expirationTime);
   }
 
@@ -425,15 +431,19 @@ export function scheduleUpdateOnFiber(
     (executionContext & DiscreteEventContext) !== NoContext &&
     // Only updates at user-blocking priority or greater are considered
     // discrete, even inside a discrete event.
+    // 只有在用户阻止优先级或更高优先级的更新才被视为离散，即使在离散事件中也是如此
     (priorityLevel === UserBlockingPriority ||
       priorityLevel === ImmediatePriority)
   ) {
     // This is the result of a discrete event. Track the lowest priority
     // discrete update per root so we can flush them early, if needed.
+    // 跟踪每个根的最低优先级离散更新，以便我们可以在需要时尽早清除它们。
     if (rootsWithPendingDiscreteUpdates === null) {
+      // 用 map 跟踪
       rootsWithPendingDiscreteUpdates = new Map([[root, expirationTime]]);
     } else {
       const lastDiscreteTime = rootsWithPendingDiscreteUpdates.get(root);
+      // 更新已经过期 替换为一个新的更新
       if (lastDiscreteTime === undefined || lastDiscreteTime > expirationTime) {
         rootsWithPendingDiscreteUpdates.set(root, expirationTime);
       }
@@ -508,6 +518,10 @@ function markUpdateTimeFromFiberToRoot(fiber, expirationTime) {
 // should cancel the previous one. It also relies on commitRoot scheduling a
 // callback to render the next level, because that means we don't need a
 // separate callback per expiration time.
+// 使用此函数以及runRootCallback可确保仅安排每个根的单个回调。
+// 它仍然可以直接调用renderRoot，但通过此函数进行调度有助于避免过多的回调。 
+// 它的工作原理是在根上存储回调节点和到期时间。 当一个新的回调进入时，它会比较到期时间以确定它是否应该取消之前的回调时间。 
+// 它还依赖于commitRoot调度回调以呈现下一级别，因为这意味着我们不需要每个到期时间单独的回调。
 function scheduleCallbackForRoot(
   root: FiberRoot,
   priorityLevel: ReactPriorityLevel,
@@ -515,6 +529,7 @@ function scheduleCallbackForRoot(
 ) {
   const existingCallbackExpirationTime = root.callbackExpirationTime;
   if (existingCallbackExpirationTime < expirationTime) {
+    // 新进来的回调的过期时间大于已有的 意味着优先级较低 那么取消之前的回调 替换为新的这个
     // New callback has higher priority than the existing one.
     const existingCallbackNode = root.callbackNode;
     if (existingCallbackNode !== null) {
@@ -524,6 +539,7 @@ function scheduleCallbackForRoot(
 
     if (expirationTime === Sync) {
       // Sync React callbacks are scheduled on a special internal queue
+      // Sync 回调计划在特殊内部队列上
       root.callbackNode = scheduleSyncCallback(
         runRootCallback.bind(
           null,
@@ -553,7 +569,7 @@ function scheduleCallbackForRoot(
     }
   }
 
-  // Associate the current interactions with this new root+priority.
+  // 将当前交互与此新根+优先级相关联。
   schedulePendingInteractions(root, expirationTime);
 }
 
@@ -804,7 +820,7 @@ function prepareFreshStack(root, expirationTime) {
     componentsThatTriggeredHighPriSuspend = null;
   }
 }
-
+// 布局更新 re-render
 function renderRoot(
   root: FiberRoot,
   expirationTime: ExpirationTime,

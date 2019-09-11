@@ -150,7 +150,7 @@ function scheduleRootUpdate(
       );
     }
   }
-
+  // 封装一个 update 对象
   const update = createUpdate(expirationTime, suspenseConfig);
   // Caution: React DevTools currently depends on this property
   // being called "element".
@@ -170,7 +170,9 @@ function scheduleRootUpdate(
   if (revertPassiveEffectsChange) {
     flushPassiveEffects();
   }
+  // 重要 ⚠️ 开始队列更新 队列实际上就是一个链表 把新的更新对象插到链表后头
   enqueueUpdate(current, update);
+  // 调用调度器 api 来进行  fiber 调度
   scheduleWork(current, expirationTime);
 
   return expirationTime;
@@ -303,7 +305,7 @@ export function createContainer(
 ): OpaqueRoot {
   return createFiberRoot(containerInfo, tag, hydrate);
 }
-// 重要 ⚠️
+// 重要 ⚠️ 这里其实主要就是完成过期时间的设定
 export function updateContainer(
   element: ReactNodeList,
   container: OpaqueRoot,

@@ -160,12 +160,14 @@ if (__DEV__) {
     currentlyProcessingQueue = null;
   };
 }
-
+// 重要 ⚠️ 创建一个新的更新队列
 export function createUpdateQueue<State>(baseState: State): UpdateQueue<State> {
   const queue: UpdateQueue<State> = {
     baseState,
+    // 头尾两个指针
     firstUpdate: null,
     lastUpdate: null,
+    // 快照保存
     firstCapturedUpdate: null,
     lastCapturedUpdate: null,
     firstEffect: null,
@@ -175,7 +177,7 @@ export function createUpdateQueue<State>(baseState: State): UpdateQueue<State> {
   };
   return queue;
 }
-
+// 克隆一个队列
 function cloneUpdateQueue<State>(
   currentQueue: UpdateQueue<State>,
 ): UpdateQueue<State> {
@@ -183,7 +185,7 @@ function cloneUpdateQueue<State>(
     baseState: currentQueue.baseState,
     firstUpdate: currentQueue.firstUpdate,
     lastUpdate: currentQueue.lastUpdate,
-
+    // 只保留以上三个字段
     // TODO: With resuming, if we bail out and resuse the child tree, we should
     // keep these effects.
     firstCapturedUpdate: null,
@@ -218,7 +220,7 @@ export function createUpdate(
   }
   return update;
 }
-
+// very important ⚠️ 更新队列
 function appendUpdateToQueue<State>(
   queue: UpdateQueue<State>,
   update: Update<State>,
@@ -232,9 +234,10 @@ function appendUpdateToQueue<State>(
     queue.lastUpdate = update;
   }
 }
-
+// 重要 ⚠️ 队列更新
 export function enqueueUpdate<State>(fiber: Fiber, update: Update<State>) {
   // Update queues are created lazily.
+  // alternate 保存各个版本的更新队列 方便崩溃的时候回滚
   const alternate = fiber.alternate;
   let queue1;
   let queue2;
@@ -242,6 +245,7 @@ export function enqueueUpdate<State>(fiber: Fiber, update: Update<State>) {
     // There's only one fiber.
     queue1 = fiber.updateQueue;
     queue2 = null;
+    // 如果没有队列那就新建一个
     if (queue1 === null) {
       queue1 = fiber.updateQueue = createUpdateQueue(fiber.memoizedState);
     }
@@ -271,16 +275,19 @@ export function enqueueUpdate<State>(fiber: Fiber, update: Update<State>) {
   }
   if (queue2 === null || queue1 === queue2) {
     // There's only a single queue.
+    // 一个队列的情况相对简单
     appendUpdateToQueue(queue1, update);
   } else {
     // There are two queues. We need to append the update to both queues,
     // while accounting for the persistent structure of the list — we don't
     // want the same update to be added multiple times.
+    // 为了避免重复的更新添加操作 只在两个队列之中存在空队列的时候才更新两个队列
     if (queue1.lastUpdate === null || queue2.lastUpdate === null) {
       // One of the queues is not empty. We must add the update to both queues.
       appendUpdateToQueue(queue1, update);
       appendUpdateToQueue(queue2, update);
     } else {
+      // 如果有队列为非空 将更新添加到第一个里头 然后更新第二个的尾部
       // Both queues are non-empty. The last update is the same in both lists,
       // because of structural sharing. So, only append to one of the lists.
       appendUpdateToQueue(queue1, update);
